@@ -1,6 +1,9 @@
 from dataclasses import dataclass
-from ..strategy.base import Signal, SignalEvent
+
+import pandas as pd
+
 from ..config import RiskConfig
+from ..strategy.base import Signal, SignalEvent
 
 
 @dataclass
@@ -28,9 +31,27 @@ class RiskManager:
             return SignalEvent(Signal.HOLD, event.symbol, event.price,
                                reason="limite de trades/heure atteinte")
 
+        if event.signal == Signal.BUY:
+            total = portfolio.capital + portfolio.position * event.price
+            if total > 0:
+                exposure = portfolio.position * event.price / total
+                if exposure >= self.cfg.max_exposure_pct:
+                    return SignalEvent(Signal.HOLD, event.symbol, event.price,
+                                       reason=f"exposition max atteinte ({exposure:.1%})")
+
         return event
 
+    def check_market(self, df: pd.DataFrame, symbol: str) -> SignalEvent | None:
+        """Retourne un HOLD si les conditions de marché sont anormales, None sinon."""
+        if "volume" not in df.columns or len(df) < 21:
+            return None
+        last_volume = df["volume"].iloc[-1]
+        avg_volume = df["volume"].iloc[-21:-1].mean()
+        if avg_volume > 0 and last_volume < avg_volume * self.cfg.min_volume_factor:
+            return SignalEvent(Signal.HOLD, symbol, df["close"].iloc[-1],
+                               reason=f"volume anormal ({last_volume:.0f} < {avg_volume * self.cfg.min_volume_factor:.0f})")
+        return None
+
     def position_size(self, capital: float, price: float) -> float:
-        """Retourne le nombre d'unités à acheter selon le % de capital alloué."""
         allocated = capital * self.cfg.max_position_pct
         return allocated / price

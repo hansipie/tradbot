@@ -44,6 +44,21 @@ def _tick(feed, strategy, risk, engine, portfolio, cfg, portfolio_store, pg, ale
     df = feed.fetch_ohlcv(cfg.symbol, cfg.timeframe, limit=500)
     price = df["close"].iloc[-1]
 
+    market_block = risk.check_market(df, cfg.symbol)
+    if market_block is not None:
+        log.info("market_blocked", reason=market_block.reason)
+        update_state(
+            symbol=cfg.symbol,
+            capital=round(portfolio.capital, 2),
+            position=portfolio.position,
+            portfolio_value=round(portfolio.capital + portfolio.position * price, 2),
+            peak_capital=round(portfolio.peak_capital, 2),
+            drawdown=0.0,
+            last_signal=market_block.signal.value,
+            last_price=price,
+        )
+        return
+
     raw = strategy.on_data(df)
     raw.symbol = cfg.symbol
     validated = risk.validate(raw, portfolio)

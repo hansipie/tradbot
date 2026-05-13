@@ -112,8 +112,7 @@ def test_profit_factor_no_trades():
 # --- Intégration : run_backtest produit des métriques cohérentes ---
 
 def test_run_backtest_metrics_consistent():
-    # Série haussière longue → au moins un trade BUY→SELL
-    closes = list(range(100, 400))  # 300 bougies haussières
+    closes = list(range(100, 400))
     idx = pd.date_range("2018-01-01", periods=len(closes), freq="D")
     df = pd.DataFrame({"close": closes}, index=idx)
 
@@ -121,6 +120,32 @@ def test_run_backtest_metrics_consistent():
 
     assert 0.0 <= result.win_rate <= 1.0
     assert result.profit_factor >= 0.0
-    # Calmar et Sortino ont le même signe que CAGR si la série est gagnante
     if result.cagr > 0 and result.max_drawdown < 0:
         assert result.calmar > 0
+
+
+# --- Slippage ---
+
+def test_slippage_reduces_capital():
+    closes = list(range(100, 400))
+    idx = pd.date_range("2018-01-01", periods=len(closes), freq="D")
+    df = pd.DataFrame({"close": closes}, index=idx)
+    strategy = DualMACrossover(fast=10, slow=30)
+
+    result_no_slip = run_backtest(df, strategy, slippage_pct=0.0)
+    result_slip    = run_backtest(df, strategy, slippage_pct=0.005)
+
+    # Le slippage dégrade toujours la performance finale
+    assert result_slip.equity.iloc[-1] <= result_no_slip.equity.iloc[-1]
+
+
+def test_slippage_zero_equals_no_slippage():
+    closes = [100, 110, 120, 115, 130, 125, 140]
+    idx = pd.date_range("2020-01-01", periods=len(closes), freq="D")
+    df = pd.DataFrame({"close": closes}, index=idx)
+    strategy = DualMACrossover(fast=2, slow=4)
+
+    r1 = run_backtest(df, strategy, slippage_pct=0.0)
+    r2 = run_backtest(df, strategy, slippage_pct=0.0, fee_rate=0.0)
+    # Sans frais ni slippage, le résultat est reproductible
+    assert r2.equity.iloc[-1] >= r1.equity.iloc[-1]

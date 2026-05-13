@@ -72,6 +72,7 @@ def run_backtest(
     strategy: Strategy,
     initial_capital: float = 10_000.0,
     fee_rate: float = 0.001,
+    slippage_pct: float = 0.001,
 ) -> BacktestResult:
     capital = initial_capital
     position = 0.0
@@ -85,17 +86,19 @@ def run_backtest(
 
         if event.signal == Signal.BUY and position == 0.0:
             capital_before = capital
-            units = capital / price
-            fee = units * price * fee_rate
+            exec_price = price * (1 + slippage_pct)
+            units = capital / exec_price
+            fee = units * exec_price * fee_rate
             position = units
             capital = 0.0 - fee
-            trades.append({"type": "buy", "price": price, "timestamp": df.index[i], "capital_before": capital_before})
+            trades.append({"type": "buy", "price": exec_price, "timestamp": df.index[i], "capital_before": capital_before})
 
         elif event.signal == Signal.SELL and position > 0.0:
-            proceeds = position * price
+            exec_price = price * (1 - slippage_pct)
+            proceeds = position * exec_price
             fee = proceeds * fee_rate
             capital = proceeds - fee
-            trades.append({"type": "sell", "price": price, "timestamp": df.index[i], "capital": capital})
+            trades.append({"type": "sell", "price": exec_price, "timestamp": df.index[i], "capital": capital})
             position = 0.0
 
         equity_curve[df.index[i]] = capital + position * price

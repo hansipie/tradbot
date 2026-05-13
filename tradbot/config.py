@@ -19,6 +19,8 @@ class RiskConfig:
     max_position_pct: float = 0.02
     max_drawdown_pct: float = 0.10
     max_trades_per_hour: int = 10
+    max_exposure_pct: float = 0.95      # position value / total portfolio max
+    min_volume_factor: float = 0.1      # volume min = factor × moyenne 20 bougies
 
 
 @dataclass
