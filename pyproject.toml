@@ -1,0 +1,25 @@
+[project]
+name = "tradbot"
+version = "0.1.0"
+description = "Bot de trading modulaire — crypto via ccxt"
+requires-python = ">=3.12"
+dependencies = [
+    "ccxt>=4.5.53",
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.4",
+    "pandas>=3.0.3",
+    "pyarrow>=24.0.0",
+    "python-dotenv>=1.2.2",
+    "redis>=7.4.0",
+    "structlog>=25.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tradbot*", "backtest*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+]
