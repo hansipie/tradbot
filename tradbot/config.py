@@ -29,6 +29,9 @@ class Config:
     timeframe: str = "1d"
     history_since: str = "2018-01-01"
     redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379"))
+    postgres_url: str = field(default_factory=lambda: os.getenv(
+        "POSTGRES_URL", "postgresql://tradbot:tradbot@localhost:5432/tradbot"
+    ))
 
     @property
     def data_file(self) -> Path:
