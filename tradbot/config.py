@@ -22,9 +22,18 @@ class RiskConfig:
 
 
 @dataclass
+class MonitorConfig:
+    telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
+    telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
+    status_port: int = field(default_factory=lambda: int(os.getenv("MONITOR_PORT", "8080")))
+    error_alert_threshold: int = 3  # alerter après N erreurs consécutives
+
+
+@dataclass
 class Config:
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
     symbol: str = "BTC/USDT"
     timeframe: str = "1d"
     history_since: str = "2018-01-01"

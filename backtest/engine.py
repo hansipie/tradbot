@@ -27,6 +27,45 @@ class BacktestResult:
             return 0.0
         return (returns.mean() / returns.std()) * (252 ** 0.5)
 
+    @property
+    def sortino(self) -> float:
+        returns = self.equity.pct_change().dropna()
+        downside = returns[returns < 0]
+        if downside.empty:
+            return 0.0
+        std = downside.std()
+        if pd.isna(std) or std == 0:
+            return 0.0
+        return (returns.mean() / std) * (252 ** 0.5)
+
+    @property
+    def calmar(self) -> float:
+        if self.max_drawdown == 0:
+            return 0.0
+        return self.cagr / abs(self.max_drawdown)
+
+    @property
+    def _round_trip_pnl(self) -> list[float]:
+        buys = [t for t in self.trades if t["type"] == "buy"]
+        sells = [t for t in self.trades if t["type"] == "sell"]
+        return [s["capital"] - b["capital_before"] for b, s in zip(buys, sells)]
+
+    @property
+    def win_rate(self) -> float:
+        pnl = self._round_trip_pnl
+        if not pnl:
+            return 0.0
+        return sum(1 for p in pnl if p > 0) / len(pnl)
+
+    @property
+    def profit_factor(self) -> float:
+        pnl = self._round_trip_pnl
+        gains = sum(p for p in pnl if p > 0)
+        losses = abs(sum(p for p in pnl if p < 0))
+        if losses == 0:
+            return float("inf") if gains > 0 else 0.0
+        return gains / losses
+
 
 def run_backtest(
     df: pd.DataFrame,
@@ -45,11 +84,12 @@ def run_backtest(
         price = df["close"].iloc[i]
 
         if event.signal == Signal.BUY and position == 0.0:
+            capital_before = capital
             units = capital / price
             fee = units * price * fee_rate
             position = units
             capital = 0.0 - fee
-            trades.append({"type": "buy", "price": price, "timestamp": df.index[i]})
+            trades.append({"type": "buy", "price": price, "timestamp": df.index[i], "capital_before": capital_before})
 
         elif event.signal == Signal.SELL and position > 0.0:
             proceeds = position * price
