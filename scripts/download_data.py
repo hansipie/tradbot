@@ -34,15 +34,16 @@ def fetch_full_history(exchange: ccxt.Exchange, symbol: str, timeframe: str, sin
 
 
 def main() -> None:
-    cfg.data_file.parent.mkdir(parents=True, exist_ok=True)
     exchange = getattr(ccxt, cfg.exchange.id)({"enableRateLimit": True})
 
-    print(f"Téléchargement {cfg.symbol} {cfg.timeframe} depuis {cfg.history_since}…")
-    df = fetch_full_history(exchange, cfg.symbol, cfg.timeframe, cfg.history_since)
-
-    df.to_parquet(cfg.data_file)
-    print(f"Sauvegardé : {cfg.data_file}  ({len(df)} lignes)")
-    print(df.tail(3))
+    for symbol in cfg.symbols:
+        dest = cfg.data_file(symbol)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Téléchargement {symbol} {cfg.timeframe} depuis {cfg.history_since}…")
+        df = fetch_full_history(exchange, symbol, cfg.timeframe, cfg.history_since)
+        df.to_parquet(dest)
+        print(f"Sauvegardé : {dest}  ({len(df)} lignes)")
+        print(df.tail(3))
 
 
 if __name__ == "__main__":

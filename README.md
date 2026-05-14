@@ -4,22 +4,28 @@ Bot de trading modulaire en Python, orienté crypto via [ccxt](https://github.co
 
 ## Prérequis
 
+- [Podman](https://podman.io/) + `podman compose`
+
+Pour le développement local uniquement :
+
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
-- [Podman](https://podman.io/) (ou Docker) pour Redis et PostgreSQL
 
-## Installation
+## Démarrage rapide (container)
 
 ```bash
-uv sync
 cp .env.example .env   # renseigner les clés API et tokens
+podman compose up -d --build
 ```
 
-Lancer Redis et PostgreSQL :
+Le bot démarre automatiquement après que Redis et PostgreSQL soient prêts.
 
 ```bash
-podman compose up -d
-# ou : docker compose up -d
+# Logs en temps réel
+podman compose logs -f bot
+
+# Arrêt propre
+podman compose down
 ```
 
 ## Configuration (.env)
@@ -27,6 +33,7 @@ podman compose up -d
 ```bash
 EXCHANGE_API_KEY=       # clé API de l'exchange
 EXCHANGE_API_SECRET=    # secret API de l'exchange
+SYMBOLS=BTC/USDC,ETH/USDC,SOL/USDC,BNB/USDC   # paires surveillées
 
 REDIS_URL=redis://localhost:6379
 POSTGRES_URL=postgresql://tradbot:tradbot@localhost:5432/tradbot
@@ -36,41 +43,49 @@ TELEGRAM_CHAT_ID=       # ton chat ID Telegram
 MONITOR_PORT=8080       # port du endpoint HTTP /status
 ```
 
-Si `TELEGRAM_TOKEN` est vide, les alertes sont désactivées silencieusement.
+`REDIS_URL` et `POSTGRES_URL` sont automatiquement surchargées par le compose pour pointer vers les services internes. Si `TELEGRAM_TOKEN` est vide, les alertes sont désactivées silencieusement.
 
 ## Utilisation
 
 ### Télécharger les données historiques
 
 ```bash
+# Via container
+podman compose run --rm bot uv run python scripts/download_data.py
+
+# En local
 uv run python scripts/download_data.py
 ```
 
-Récupère l'historique journalier BTC/USDT depuis Binance (2018 → aujourd'hui) et le sauvegarde dans `data/historical/BTC_USDT_1d.parquet`.
+Récupère l'historique journalier de chaque paire configurée dans `SYMBOLS` depuis 2018 et le sauvegarde dans `data/historical/`.
 
 ### Lancer un backtest
 
 ```bash
-uv run python scripts/run_backtest.py
+uv run python scripts/run_backtest.py           # métriques globales + détail des trades
+uv run python scripts/run_backtest.py --yearly  # tableau année par année
+uv run python scripts/run_backtest.py --all     # les deux
 ```
+
+Le backtest génère automatiquement les graphiques dans `data/historical/`.
 
 ### Lancer le bot (paper trading)
 
 ```bash
+# Via compose (recommandé)
+podman compose up -d --build
+
+# En local
 uv run python main.py
 ```
 
 Le bot tourne en mode sandbox par défaut (`ExchangeConfig.sandbox = True`). Aucun ordre réel n'est envoyé tant que `PaperBroker` est utilisé dans `main.py`.
 
-La boucle se synchronise automatiquement sur les bougies de l'exchange (ex : toutes les 24h pour `1d`).
+La boucle se synchronise automatiquement sur les bougies de l'exchange (ex : toutes les 24h pour `1d`). Ctrl+C ou SIGTERM déclenchent un arrêt propre dans la seconde.
 
-**Arrêter le bot** :
+**Arrêt via fichier sentinel** (pratique pour un arrêt à distance sans tuer le process) :
 
 ```bash
-# Via signal (Ctrl+C ou SIGTERM)
-kill <pid>
-
-# Via fichier sentinel (pratique pour un arrêt à distance)
 touch /tmp/tradbot.stop
 ```
 
@@ -86,15 +101,15 @@ curl http://localhost:8080/status
 
 ```json
 {
-  "symbol": "BTC/USDT",
+  "symbol": "BTC/USDC",
   "capital": 9850.0,
   "position": 0.003,
   "portfolio_value": 10045.0,
   "peak_capital": 10200.0,
   "drawdown": -0.034,
   "last_signal": "HOLD",
-  "last_price": 65000.0,
-  "last_tick": "2026-05-13T15:10:14Z"
+  "last_price": 81500.0,
+  "last_tick": "2026-05-15T08:00:00Z"
 }
 ```
 
@@ -127,6 +142,7 @@ CcxtFeed → Strategy.on_data() → RiskManager.check_market()
 | `tradbot/storage/` | Persistance Redis (portfolio) et PostgreSQL (trades, equity) |
 | `tradbot/monitoring/` | Logs JSON structurés, alertes Telegram, endpoint HTTP status |
 | `backtest/` | Moteur de backtest indépendant — même code de stratégie qu'en live |
+| `scripts/` | Outils CLI : téléchargement de données, backtest, visualisation |
 
 ## Stratégies disponibles
 
@@ -135,17 +151,16 @@ CcxtFeed → Strategy.on_data() → RiskManager.check_market()
 | `DualMACrossover(fast, slow)` | Achat quand MM(fast) > MM(slow), vente sinon. Défaut : 50/200. |
 | `RSIMeanReversion(period, oversold, overbought)` | Mean reversion sur RSI avec filtre de tendance. |
 
-### Résultats backtest — DualMA 50/200 sur BTC/USDT 1j (2018–2026)
+### Résultats backtest — DualMA 50/200 (2018–2026, frais 0,1 %, slippage 0,1 %)
 
-| Métrique | Valeur |
-|---|---|
-| Capital final (depuis 10 000 $) | 77 770 $ |
-| CAGR | 27.8 %/an |
-| Drawdown max | -63.7 % |
-| Sharpe ratio | 0.63 |
-| Nombre de trades | 16 |
+| Paire | Capital final | CAGR | Drawdown max | Sharpe | Calmar |
+|---|---|---|---|---|---|
+| BNB/USDC | 106 531 $ | +37,6 % | -73,9 % | 0,68 | 0,51 |
+| BTC/USDC | 25 705 $ | +13,6 % | -62,2 % | 0,44 | 0,22 |
+| ETH/USDC | 24 570 $ | +12,9 % | -78,4 % | 0,44 | 0,16 |
+| SOL/USDC | 7 956 $ | -4,8 % | -63,7 % | 0,13 | -0,08 |
 
-> Les backtests incluent frais (0.1 %) et slippage (0.1 %) par défaut. Pour des conditions plus prudentes : `run_backtest(df, strategy, fee_rate=0.002, slippage_pct=0.002)`.
+*SOL/USDC : historique depuis septembre 2021 uniquement.*
 
 ## Risk Manager
 
@@ -168,7 +183,7 @@ class MaStrategie:
         # df : OHLCV indexé par pd.Timestamp UTC
         # Toujours utiliser .shift(1) sur les indicateurs pour éviter le look-ahead bias
         ...
-        return SignalEvent(Signal.BUY, symbol="BTC/USDT", price=df["close"].iloc[-1])
+        return SignalEvent(Signal.BUY, symbol="BTC/USDC", price=df["close"].iloc[-1])
 ```
 
 La même instance tourne sans modification dans `run_backtest()` et dans `main.py`.

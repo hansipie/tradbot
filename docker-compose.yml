@@ -1,22 +1,48 @@
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: tradbot
       POSTGRES_USER: tradbot
       POSTGRES_PASSWORD: tradbot
-    ports:
-      - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Écrase les URLs du .env pour pointer vers les services internes
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgresql://tradbot:tradbot@postgres:5432/tradbot
+    ports:
+      - "${MONITOR_PORT:-8080}:8080"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
 volumes:
   redis_data:

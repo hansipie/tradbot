@@ -40,15 +40,15 @@ def _seconds_to_next_candle(interval: int) -> float:
     return next_open - now + 5  # +5s pour que la bougie soit bien fermée côté exchange
 
 
-def _tick(feed, strategy, risk, engine, portfolio, cfg, portfolio_store, pg, alerter) -> None:
-    df = feed.fetch_ohlcv(cfg.symbol, cfg.timeframe, limit=500)
+def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store, pg, alerter) -> None:
+    df = feed.fetch_ohlcv(symbol, cfg.timeframe, limit=500)
     price = df["close"].iloc[-1]
 
-    market_block = risk.check_market(df, cfg.symbol)
+    market_block = risk.check_market(df, symbol)
     if market_block is not None:
-        log.info("market_blocked", reason=market_block.reason)
+        log.info("market_blocked", symbol=symbol, reason=market_block.reason)
         update_state(
-            symbol=cfg.symbol,
+            symbol=symbol,
             capital=round(portfolio.capital, 2),
             position=portfolio.position,
             portfolio_value=round(portfolio.capital + portfolio.position * price, 2),
@@ -60,12 +60,11 @@ def _tick(feed, strategy, risk, engine, portfolio, cfg, portfolio_store, pg, ale
         return
 
     raw = strategy.on_data(df)
-    raw.symbol = cfg.symbol
+    raw.symbol = symbol
     validated = risk.validate(raw, portfolio)
 
-    log.info("signal", raw=raw.signal.value, validated=validated.signal.value, reason=validated.reason)
+    log.info("signal", symbol=symbol, raw=raw.signal.value, validated=validated.signal.value, reason=validated.reason)
 
-    # Alerte si le RiskManager a bloqué un signal à cause du drawdown
     if raw.signal != Signal.HOLD and validated.signal == Signal.HOLD:
         if "drawdown" in validated.reason:
             drawdown = (portfolio.peak_capital - portfolio.capital) / portfolio.peak_capital
@@ -85,13 +84,13 @@ def _tick(feed, strategy, risk, engine, portfolio, cfg, portfolio_store, pg, ale
 
         portfolio.peak_capital = max(portfolio.peak_capital, portfolio.capital)
         pg.record_trade(validated, amount, portfolio.capital, portfolio.position)
-        portfolio_store.save(portfolio)
+        portfolio_store.save(portfolio, symbol)
         alerter.trade(validated.signal.value, validated.symbol, validated.price, portfolio.capital)
 
     pg.record_equity(df.index[-1], portfolio.capital, portfolio.position * price)
 
     update_state(
-        symbol=cfg.symbol,
+        symbol=symbol,
         capital=round(portfolio.capital, 2),
         position=portfolio.position,
         portfolio_value=round(portfolio.capital + portfolio.position * price, 2),
@@ -120,28 +119,34 @@ def main() -> None:
     pg.init_schema()
 
     feed = CcxtFeed(cfg.exchange.id, cfg.exchange.api_key, cfg.exchange.api_secret, cfg.exchange.sandbox)
-    strategy = DualMACrossover(fast=50, slow=200)
     risk = RiskManager(cfg.risk)
     engine = ExecutionEngine(PaperBroker())
 
-    portfolio = portfolio_store.load() or Portfolio(capital=10_000.0, peak_capital=10_000.0)
-    log.info("portfolio_loaded", capital=portfolio.capital, position=portfolio.position)
+    # État par paire : portfolio + stratégie indépendants
+    per_symbol: dict[str, tuple[Portfolio, DualMACrossover]] = {}
+    for sym in cfg.symbols:
+        portfolio = portfolio_store.load(sym) or Portfolio(capital=10_000.0, peak_capital=10_000.0)
+        log.info("portfolio_loaded", symbol=sym, capital=portfolio.capital, position=portfolio.position)
+        per_symbol[sym] = (portfolio, DualMACrossover(fast=50, slow=200))
 
     interval = _timeframe_seconds(cfg.timeframe)
     current_hour = datetime.now(timezone.utc).hour
     consecutive_errors = 0
 
-    log.info("bot_started", symbol=cfg.symbol, timeframe=cfg.timeframe, interval_s=interval)
-    alerter.bot_started(cfg.symbol, portfolio.capital)
+    log.info("bot_started", symbols=cfg.symbols, timeframe=cfg.timeframe, interval_s=interval)
+    for sym, (portfolio, _) in per_symbol.items():
+        alerter.bot_started(sym, portfolio.capital)
 
     while _running and not _SENTINEL.exists():
         now_hour = datetime.now(timezone.utc).hour
         if now_hour != current_hour:
-            portfolio.trades_this_hour = 0
+            for portfolio, _ in per_symbol.values():
+                portfolio.trades_this_hour = 0
             current_hour = now_hour
 
         try:
-            _tick(feed, strategy, risk, engine, portfolio, cfg, portfolio_store, pg, alerter)
+            for sym, (portfolio, strategy) in per_symbol.items():
+                _tick(feed, strategy, risk, engine, portfolio, sym, cfg, portfolio_store, pg, alerter)
             consecutive_errors = 0
         except Exception as exc:
             consecutive_errors += 1

@@ -11,7 +11,7 @@ class ExchangeConfig:
     id: str = "binance"
     api_key: str = field(default_factory=lambda: os.getenv("EXCHANGE_API_KEY", ""))
     api_secret: str = field(default_factory=lambda: os.getenv("EXCHANGE_API_SECRET", ""))
-    sandbox: bool = True
+    sandbox: bool = False
 
 
 @dataclass
@@ -36,7 +36,9 @@ class Config:
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
-    symbol: str = "BTC/USDT"
+    symbols: list[str] = field(
+        default_factory=lambda: [s.strip() for s in os.getenv("SYMBOLS", "BTC/USDC").split(",")]
+    )
     timeframe: str = "1d"
     history_since: str = "2018-01-01"
     redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379"))
@@ -44,7 +46,6 @@ class Config:
         "POSTGRES_URL", "postgresql://tradbot:tradbot@localhost:5432/tradbot"
     ))
 
-    @property
-    def data_file(self) -> Path:
-        slug = self.symbol.replace("/", "_")
+    def data_file(self, symbol: str) -> Path:
+        slug = symbol.replace("/", "_")
         return Path("data/historical") / f"{slug}_{self.timeframe}.parquet"
