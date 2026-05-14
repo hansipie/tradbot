@@ -148,12 +148,16 @@ def main() -> None:
             log.error("tick_error", error=str(exc), consecutive=consecutive_errors)
             if consecutive_errors >= cfg.monitor.error_alert_threshold:
                 alerter.consecutive_errors(consecutive_errors, str(exc))
-            time.sleep(60)
+            deadline = time.monotonic() + 60
+            while _running and time.monotonic() < deadline:
+                time.sleep(1)
             continue
 
         sleep_s = _seconds_to_next_candle(interval)
         log.info("sleeping_until_next_candle", seconds=round(sleep_s))
-        time.sleep(sleep_s)
+        deadline = time.monotonic() + sleep_s
+        while _running and not _SENTINEL.exists() and time.monotonic() < deadline:
+            time.sleep(1)
 
     alerter.bot_stopped()
     log.info("bot_stopped")
