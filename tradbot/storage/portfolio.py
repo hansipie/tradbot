@@ -16,19 +16,23 @@ class PortfolioStore:
 
     def save(self, portfolio: Portfolio, symbol: str) -> None:
         self._r.hset(_key(symbol), mapping={
-            "capital": portfolio.capital,
-            "peak_capital": portfolio.peak_capital,
-            "position": portfolio.position,
-            "trades_this_hour": portfolio.trades_this_hour,
+            "capital": float(portfolio.capital),
+            "peak_capital": float(portfolio.peak_capital),
+            "position": float(portfolio.position),
+            "trades_this_hour": int(portfolio.trades_this_hour),
         })
 
     def load(self, symbol: str) -> Portfolio | None:
         data = self._r.hgetall(_key(symbol))
         if not data:
             return None
-        return Portfolio(
-            capital=float(data["capital"]),
-            peak_capital=float(data["peak_capital"]),
-            position=float(data["position"]),
-            trades_this_hour=int(data["trades_this_hour"]),
-        )
+        try:
+            return Portfolio(
+                capital=float(data["capital"]),
+                peak_capital=float(data["peak_capital"]),
+                position=float(data["position"]),
+                trades_this_hour=int(data["trades_this_hour"]),
+            )
+        except (ValueError, KeyError):
+            self._r.delete(_key(symbol))
+            return None
