@@ -176,15 +176,13 @@ def _visualize_yearly(cfg, symbol: str) -> None:
         # ── Rendement annuel en titre ──
         prev_eq = eq[eq.index.year < year]
         start_val = prev_eq.iloc[-1] if len(prev_eq) else (eq_y.iloc[0] if len(eq_y) else 10_000)
+        ax_p.set_title(str(year), color=FG, fontsize=9, pad=4)
         if len(eq_y):
             ret = (eq_y.iloc[-1] - start_val) / start_val
             sign = "+" if ret >= 0 else ""
             color_ret = "#66bb6a" if ret >= 0 else "#ef5350"
-            ax_p.set_title(f"{year}\n{sign}{ret:.1%}", color=FG, fontsize=9, pad=4)
-            # couleur du % uniquement via text annoté
-            ax_p.set_title(str(year), color=FG, fontsize=9, pad=4)
-            ax_p.text(0.5, 1.01, f"{sign}{ret:.1%}", transform=ax_p.transAxes,
-                      ha="center", va="bottom", color=color_ret, fontsize=8, fontweight="bold")
+            ax_p.text(0.5, 0.97, f"{sign}{ret:.1%}", transform=ax_p.transAxes,
+                      ha="center", va="top", color=color_ret, fontsize=8, fontweight="bold")
 
         # ── Équité ──
         _style(ax_e)
