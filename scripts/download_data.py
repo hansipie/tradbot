@@ -7,51 +7,59 @@ import time
 import pandas as pd
 import ccxt
 from tradbot.config import Config
-from tradbot.data.feed import _inverse_symbol, _invert_ohlcv
+from tradbot.data.feed import _inverse_symbol, _invert_ohlcv, _raw_to_df, _cross_via_usdt
 
 cfg = Config()
 
 
+def _paginate(exchange: ccxt.Exchange, symbol: str, timeframe: str, since_ms: int) -> pd.DataFrame:
+    """Télécharge l'historique complet d'une paire par pages de 1000 bougies."""
+    all_candles: list = []
+    batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=1000)
+    if batch:
+        all_candles.extend(batch)
+        since_ms = batch[-1][0] + 1
+    while len(batch) >= 1000:
+        time.sleep(exchange.rateLimit / 1000)
+        batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=1000)
+        if not batch:
+            break
+        all_candles.extend(batch)
+        since_ms = batch[-1][0] + 1
+        print(f"  {len(all_candles)} bougies récupérées…", end="\r")
+    print()
+    return _raw_to_df(all_candles)
+
+
 def fetch_full_history(exchange: ccxt.Exchange, symbol: str, timeframe: str, since_iso: str) -> pd.DataFrame:
     since_ms = exchange.parse8601(since_iso + "T00:00:00Z")
-    all_candles = []
-    inverted = False
 
-    # Détecter dès la première page si la paire doit être inversée
-    fetch_symbol = symbol
+    # 1. Paire directe
     try:
-        first = exchange.fetch_ohlcv(fetch_symbol, timeframe=timeframe, since=since_ms, limit=1000)
+        return _paginate(exchange, symbol, timeframe, since_ms)
     except ccxt.BadSymbol:
-        inv = _inverse_symbol(symbol)
-        if inv is None:
-            raise
-        print(f"  {symbol} introuvable, utilisation de la paire inverse {inv} avec inversion des prix")
-        fetch_symbol = inv
-        inverted = True
-        first = exchange.fetch_ohlcv(fetch_symbol, timeframe=timeframe, since=since_ms, limit=1000)
+        pass
 
-    if first:
-        all_candles.extend(first)
-        since_ms = first[-1][0] + 1
+    # 2. Paire inverse
+    inv = _inverse_symbol(symbol)
+    if inv is not None:
+        try:
+            print(f"  {symbol} introuvable, utilisation de la paire inverse {inv}")
+            return _invert_ohlcv(_paginate(exchange, inv, timeframe, since_ms))
+        except ccxt.BadSymbol:
+            pass
 
-    while len(first) >= 1000:
-        time.sleep(exchange.rateLimit / 1000)
-        first = exchange.fetch_ohlcv(fetch_symbol, timeframe=timeframe, since=since_ms, limit=1000)
-        if not first:
-            break
-        all_candles.extend(first)
-        since_ms = first[-1][0] + 1
-        print(f"  {len(all_candles)} bougies récupérées…", end="\r")
+    # 3. Reconstruction synthétique via USDT
+    parts = symbol.split("/")
+    if len(parts) == 2:
+        base, quote = parts
+        if base != "USDT" and quote != "USDT":
+            print(f"  {symbol} et {inv} introuvables, reconstruction via {base}/USDT ÷ {quote}/USDT")
+            df_base = _paginate(exchange, f"{base}/USDT", timeframe, since_ms)
+            df_quote = _paginate(exchange, f"{quote}/USDT", timeframe, since_ms)
+            return _cross_via_usdt(df_base, df_quote)
 
-    print()
-    df = pd.DataFrame(all_candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-    df.set_index("timestamp", inplace=True)
-
-    if inverted:
-        df = _invert_ohlcv(df)
-
-    return df
+    raise ccxt.BadSymbol(f"impossible de résoudre la paire {symbol}")
 
 
 def main() -> None:
