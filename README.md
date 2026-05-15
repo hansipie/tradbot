@@ -1,6 +1,7 @@
 # tradbot
 
 Bot de trading modulaire en Python, orienté crypto via [ccxt](https://github.com/ccxt/ccxt). Architecture event-driven avec séparation stricte entre le code live et le moteur de backtest.
+Mise en pratique de mon article: https://blog.ansicode.fr/posts/2026-05-13-la-theorie-derriere-les-bots-de-trading/
 
 ## Prérequis
 
