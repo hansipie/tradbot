@@ -47,3 +47,12 @@ class Alerter:
 
     def consecutive_errors(self, count: int, last_error: str) -> None:
         self._send(f"🚨 <b>{count} erreurs consécutives</b>\n{last_error}")
+
+    def crossover_imminent(self, symbol: str, direction: str, bars: float, timeframe: str) -> None:
+        emoji = "📈" if direction == "BUY" else "📉"
+        self._send(
+            f"{emoji} <b>Croisement MA imminent</b>\n"
+            f"Symbole : {symbol}\n"
+            f"Direction : {direction}\n"
+            f"Dans ~{bars:.1f} bougie(s) ({timeframe})"
+        )

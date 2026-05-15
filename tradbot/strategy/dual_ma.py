@@ -12,6 +12,22 @@ class DualMACrossover:
         self.fast = fast
         self.slow = slow
 
+    def crossover_proximity(self, df: pd.DataFrame, horizon: float = 2.0) -> tuple[str, float] | None:
+        """Retourne (direction, bougies_estimées) si un croisement est imminent, sinon None."""
+        ma_fast = df["close"].rolling(self.fast).mean()
+        ma_slow = df["close"].rolling(self.slow).mean()
+        gap = ma_fast - ma_slow
+        if pd.isna(gap.iloc[-1]):
+            return None
+        velocity = gap.diff().iloc[-1]
+        if velocity == 0 or pd.isna(velocity):
+            return None
+        bars = -gap.iloc[-1] / velocity
+        if 0 < bars <= horizon:
+            direction = "BUY" if gap.iloc[-1] < 0 else "SELL"
+            return direction, float(bars)
+        return None
+
     def on_data(self, df: pd.DataFrame) -> SignalEvent:
         # Shift(1) : on décide avec les données confirmées de la bougie précédente
         ma_fast = df["close"].rolling(self.fast).mean().shift(1)

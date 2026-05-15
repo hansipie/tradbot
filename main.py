@@ -40,7 +40,7 @@ def _seconds_to_next_candle(interval: int) -> float:
     return next_open - now + 5  # +5s pour que la bougie soit bien fermée côté exchange
 
 
-def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store, pg, alerter) -> None:
+def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store, pg, alerter, proximity_alerted: set) -> None:
     df = feed.fetch_ohlcv(symbol, cfg.timeframe, limit=500)
     price = df["close"].iloc[-1]
 
@@ -58,6 +58,17 @@ def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store,
             last_price=price,
         )
         return
+
+    prox = strategy.crossover_proximity(df)
+    if prox is not None:
+        direction, bars = prox
+        alert_key = f"{symbol}:{direction}"
+        if alert_key not in proximity_alerted:
+            alerter.crossover_imminent(symbol, direction, bars, cfg.timeframe)
+            proximity_alerted.add(alert_key)
+    else:
+        proximity_alerted.discard(f"{symbol}:BUY")
+        proximity_alerted.discard(f"{symbol}:SELL")
 
     raw = strategy.on_data(df)
     raw.symbol = symbol
@@ -132,6 +143,7 @@ def main() -> None:
     interval = _timeframe_seconds(cfg.timeframe)
     current_hour = datetime.now(timezone.utc).hour
     consecutive_errors = 0
+    proximity_alerted: set[str] = set()
 
     log.info("bot_started", symbols=cfg.symbols, timeframe=cfg.timeframe, interval_s=interval)
     for sym, (portfolio, _) in per_symbol.items():
@@ -146,7 +158,7 @@ def main() -> None:
 
         try:
             for sym, (portfolio, strategy) in per_symbol.items():
-                _tick(feed, strategy, risk, engine, portfolio, sym, cfg, portfolio_store, pg, alerter)
+                _tick(feed, strategy, risk, engine, portfolio, sym, cfg, portfolio_store, pg, alerter, proximity_alerted)
             consecutive_errors = 0
         except Exception as exc:
             consecutive_errors += 1
