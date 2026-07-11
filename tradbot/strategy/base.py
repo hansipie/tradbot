@@ -16,6 +16,10 @@ class SignalEvent:
     symbol: str
     price: float
     reason: str = ""
+    confidence: float | None = None
+    expected_return: float | None = None
+    horizon_bars: int | None = None
+    target_size: float | None = None
 
 
 class Strategy(Protocol):

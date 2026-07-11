@@ -78,11 +78,31 @@ def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store,
 
     if raw.signal != Signal.HOLD and validated.signal == Signal.HOLD:
         if "drawdown" in validated.reason:
-            drawdown = (portfolio.peak_capital - portfolio.capital) / portfolio.peak_capital
+            total = portfolio.capital + portfolio.position * validated.price
+            drawdown = (portfolio.peak_capital - total) / portfolio.peak_capital
             alerter.drawdown_limit(drawdown)
 
     if validated.signal != Signal.HOLD:
-        amount = risk.position_size(portfolio.capital, validated.price)
+        portfolio_value = portfolio.capital + portfolio.position * validated.price
+        if validated.signal == Signal.BUY:
+            if validated.target_size is not None:
+                target = min(max(validated.target_size, 0.0), 1.0)
+                amount = max(0.0, portfolio_value * target / validated.price - portfolio.position)
+            else:
+                amount = risk.position_size(portfolio.capital, validated.price)
+            amount = min(amount, portfolio.capital / validated.price)
+            if amount <= 0:
+                return
+        else:
+            if validated.target_size is not None:
+                target = min(max(validated.target_size, 0.0), 1.0)
+                target_units = portfolio_value * target / validated.price
+                amount = max(0.0, portfolio.position - target_units)
+            else:
+                amount = portfolio.position
+            amount = min(amount, portfolio.position)
+            if amount <= 0:
+                return
         engine.execute(validated, amount)
         portfolio.trades_this_hour += 1
 
@@ -90,13 +110,17 @@ def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store,
             portfolio.capital -= amount * validated.price
             portfolio.position += amount
         elif validated.signal == Signal.SELL:
-            portfolio.capital += portfolio.position * validated.price
-            portfolio.position = 0.0
+            portfolio.capital += amount * validated.price
+            portfolio.position -= amount
+            if portfolio.position < 0:
+                portfolio.position = 0.0
 
-        portfolio.peak_capital = max(portfolio.peak_capital, portfolio.capital)
         pg.record_trade(validated, amount, portfolio.capital, portfolio.position)
         portfolio_store.save(portfolio, symbol)
         alerter.trade(validated.signal.value, validated.symbol, validated.price, portfolio.capital)
+
+    total = portfolio.capital + portfolio.position * price
+    portfolio.peak_capital = max(portfolio.peak_capital, total)
 
     pg.record_equity(df.index[-1], portfolio.capital, portfolio.position * price)
 
@@ -104,9 +128,9 @@ def _tick(feed, strategy, risk, engine, portfolio, symbol, cfg, portfolio_store,
         symbol=symbol,
         capital=round(portfolio.capital, 2),
         position=portfolio.position,
-        portfolio_value=round(portfolio.capital + portfolio.position * price, 2),
+        portfolio_value=round(total, 2),
         peak_capital=round(portfolio.peak_capital, 2),
-        drawdown=round((portfolio.peak_capital - portfolio.capital) / portfolio.peak_capital, 4)
+        drawdown=round((portfolio.peak_capital - total) / portfolio.peak_capital, 4)
         if portfolio.peak_capital > 0 else 0.0,
         last_signal=validated.signal.value,
         last_price=price,

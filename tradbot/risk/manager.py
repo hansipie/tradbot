@@ -22,7 +22,9 @@ class RiskManager:
         if event.signal == Signal.HOLD:
             return event
 
-        drawdown = (portfolio.peak_capital - portfolio.capital) / portfolio.peak_capital
+        total = portfolio.capital + portfolio.position * event.price
+        drawdown = ((portfolio.peak_capital - total) / portfolio.peak_capital
+                    if portfolio.peak_capital > 0 else 0.0)
         if drawdown >= self.cfg.max_drawdown_pct:
             return SignalEvent(Signal.HOLD, event.symbol, event.price,
                                reason=f"drawdown max atteint ({drawdown:.1%})")

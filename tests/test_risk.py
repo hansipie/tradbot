@@ -106,3 +106,10 @@ def test_volume_check_skipped_when_not_enough_rows():
     risk = RiskManager(_cfg(min_volume_factor=0.1))
     volumes = [1000.0] * 10 + [1.0]
     assert risk.check_market(_df_with_volume(volumes), "BTC/USDT") is None
+
+
+def test_drawdown_uses_mark_to_market_portfolio_value():
+    risk = RiskManager(_cfg(max_drawdown_pct=0.10))
+    portfolio = Portfolio(capital=100.0, peak_capital=1_000.0, position=9.0)
+    result = risk.validate(_event(Signal.SELL, price=100.0), portfolio)
+    assert result.signal == Signal.SELL
