@@ -21,8 +21,11 @@ services:
     environment:
       # Écrase les URLs du .env pour pointer vers les services internes
       POSTGRES_URL: postgresql://tradbot:tradbot@postgres:5432/tradbot
-    ports:
-      - "${MONITOR_PORT:-8080}:8080"
+      # Port interne fixe : le reverse proxy (Coolify/Traefik) vise 8080,
+      # quelle que soit la valeur de MONITOR_PORT dans l'environnement
+      MONITOR_PORT: "8080"
+    expose:
+      - "8080"
     volumes:
       - ./data:/app/data
     depends_on:

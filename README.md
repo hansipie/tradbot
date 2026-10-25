@@ -29,12 +29,12 @@ cp .env.example .env
 | `SWAPS_API_TOKEN` | vide | secret Bearer de `POST /swaps` (vide = endpoint désactivé) |
 | `POSTGRES_URL` | localhost | base PostgreSQL |
 | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` | vides | alertes (désactivées si vides) |
-| `MONITOR_PORT` | 8080 | endpoint `/status` |
+| `MONITOR_PORT` | 8080 | port de l'endpoint (hors container ; le compose force 8080 en interne) |
 
 ## Recevoir les swaps de CryptoUpdate
 
 1. Génère un secret : `openssl rand -hex 32`, puis renseigne-le comme `SWAPS_API_TOKEN` dans Coolify.
-2. Dans Coolify, attribue un domaine au service `bot` (port 8080) : Traefik fournit le HTTPS.
+2. Dans Coolify, attribue un domaine au service `bot` (port 8080) : Traefik fournit le HTTPS. Le compose n'expose pas de port sur l'hôte ; pour accéder à `/status` en local, ajoute `ports: ["8080:8080"]` dans un `docker-compose.override.yml`.
 3. Dans le `settings.json` de CryptoUpdate (ou via `TRADBOT_URL` / `TRADBOT_TOKEN`) :
 
 ```json
