@@ -12,7 +12,9 @@ CryptoUpdate ──POST /swaps (HTTPS + Bearer)──▶ bot ──▶ PostgreSQ
 - Un swap A→B est **ouvert** tant que le B reçu n'a pas été dépensé (consommation FIFO par wallet, dépenses partielles gérées).
 - Gain = `B restant × taux B→A × (1 − frais) ÷ A donné − 1`, avec le taux ccxt (paire directe, inverse ou via USDT).
 - Une alerte par swap au franchissement du seuil, réarmée quand le gain repasse 0,5 point sous le seuil.
-- `GET /status` (port 8080) liste les swaps ouverts et leur gain.
+- `GET /status` (port 8080) liste les swaps ouverts et leur gain ; il exige le même Bearer que `POST /swaps` dès que `SWAPS_API_TOKEN` est défini.
+- Commandes Telegram (chat configuré uniquement) : `/status`, `/swaps`, `/help`.
+- Arrêt propre : `SIGTERM`/`SIGINT`, ou création du fichier `/tmp/tradbot.stop`.
 
 ## Configuration
 
@@ -29,6 +31,7 @@ cp .env.example .env
 | `SWAPS_API_TOKEN` | vide | secret Bearer de `POST /swaps` (vide = endpoint désactivé) |
 | `POSTGRES_URL` | localhost | base PostgreSQL |
 | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` | vides | alertes (désactivées si vides) |
+| `NOTIFY_LIFECYCLE` | false | message Telegram à chaque démarrage/arrêt |
 | `MONITOR_PORT` | 8080 | port de l'endpoint (hors container ; le compose force 8080 en interne) |
 
 ## Recevoir les swaps de CryptoUpdate

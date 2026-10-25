@@ -9,7 +9,8 @@ from tradbot.config import Config, SwapConfig
 from tradbot.data.feed import CcxtFeed
 from tradbot.monitoring.alerter import Alerter
 from tradbot.monitoring.logger import setup_logging
-from tradbot.monitoring.status import start_status_server, update_state
+from tradbot.monitoring.commands import start_command_listener
+from tradbot.monitoring.status import get_state, start_status_server, update_state
 from tradbot.storage import PgStore, SwapStore
 from tradbot.swaps import current_rate, evaluate, open_positions
 
@@ -103,7 +104,9 @@ def main() -> None:
         fee=cfg.swaps.fee,
         interval_s=cfg.swaps.check_interval_s,
     )
-    alerter.bot_started(f"surveillance des swaps (seuil {cfg.swaps.min_gain:.1%})")
+    if cfg.monitor.notify_lifecycle:
+        alerter.bot_started(f"surveillance des swaps (seuil {cfg.swaps.min_gain:.1%})")
+    start_command_listener(cfg.monitor.telegram_token, cfg.monitor.telegram_chat_id, get_state)
 
     while _running and not _SENTINEL.exists():
         wait_s = cfg.swaps.check_interval_s
@@ -121,7 +124,8 @@ def main() -> None:
         while _running and not _SENTINEL.exists() and time.monotonic() < deadline:
             time.sleep(1)
 
-    alerter.bot_stopped()
+    if cfg.monitor.notify_lifecycle:
+        alerter.bot_stopped()
     log.info("bot_stopped")
 
 

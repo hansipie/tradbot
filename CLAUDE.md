@@ -22,8 +22,8 @@ CryptoUpdate SQLite → sync_swaps.py → PostgreSQL (swaps) → open_positions(
 - `config.py` — dataclasses (`Config`, `ExchangeConfig`, `MonitorConfig`, `SwapConfig`), lues depuis `.env`.
 - `swaps/evaluator.py` — logique pure : `open_positions` (lots FIFO par wallet/token), `evaluate` (gain en unités après frais), `current_rate`.
 - `data/feed.py` — `CcxtFeed` résout n'importe quelle paire (directe, inverse, via USDT).
-- `storage/` — `SwapStore` (copie PostgreSQL des swaps), `PgStore` (init du schéma).
-- `monitoring/` — `Alerter` (Telegram), endpoint `/status`, logs structlog.
+- `storage/` — `SwapStore` (copie PostgreSQL des swaps), `schema.py` : `PgStore` (init du schéma).
+- `monitoring/` — `Alerter` (Telegram), `commands.py` (commandes Telegram /status /swaps /help), endpoint `/status`, logs structlog.
 
 ## Règles importantes
 

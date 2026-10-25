@@ -16,6 +16,10 @@ _state: dict = {}
 _MAX_BODY = 1_000_000
 
 
+def get_state() -> dict:
+    return dict(_state)
+
+
 def update_state(**kwargs) -> None:
     _state.update(kwargs)
     _state["last_tick"] = datetime.now(timezone.utc).isoformat()
@@ -41,6 +45,9 @@ def _make_handler(api_token: str, on_swaps: Callable[[list[Swap]], None] | None)
         def do_GET(self) -> None:
             if self.path != "/status":
                 self._reply(404)
+                return
+            if api_token and not self._authorized():
+                self._reply(401)
                 return
             self._reply(200, _state)
 

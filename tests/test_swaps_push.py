@@ -116,5 +116,6 @@ def test_push_disabled_without_token():
 
 def test_status_still_served(server):
     url, _ = server
-    with urllib.request.urlopen(f"{url}/status", timeout=5) as resp:
+    req = urllib.request.Request(f"{url}/status", headers={"Authorization": "Bearer secret"})
+    with urllib.request.urlopen(req, timeout=5) as resp:
         assert resp.status == 200
