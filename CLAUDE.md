@@ -5,41 +5,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commandes essentielles
 
 ```bash
-# Lancer les tests
-uv run pytest tests/ -v
-
-# Lancer un test unitaire précis
-uv run pytest tests/test_strategy.py::test_buy_signal_when_fast_above_slow -v
-
-# Lancer le bot (paper trading par défaut)
-uv run python main.py
-
-# Ajouter une dépendance
+uv run pytest tests/ -v                 # tests
+uv run python scripts/sync_swaps.py     # copie les swaps de CryptoUpdate vers PostgreSQL
+uv run python main.py                   # bot de surveillance des swaps
 uv add <package>
 ```
 
 ## Architecture
 
-Le pipeline de données suit un flux linéaire et unidirectionnel :
+Le bot surveille les swaps suivis dans `../CryptoUpdate` et alerte par Telegram quand un swap retour est rentable :
 
 ```
-CcxtFeed → Strategy.on_data() → RiskManager.validate() → ExecutionEngine.execute()
+CryptoUpdate SQLite → sync_swaps.py → PostgreSQL (swaps) → open_positions() → evaluate() → Alerter
 ```
 
-**`tradbot/`** — code live (bot en temps réel)
-- `config.py` — configuration centrale via dataclasses (`Config`, `ExchangeConfig`, `RiskConfig`). Lire l'environnement via `.env` (copier `.env.example`).
-- `data/feed.py` — `CcxtFeed` implémente le Protocol `DataFeed`. Toujours retourner un `pd.DataFrame` indexé par `pd.Timestamp` UTC avec les colonnes `open/high/low/close/volume`.
-- `strategy/base.py` — définit `Signal` (enum), `SignalEvent` (dataclass) et le Protocol `Strategy`. Toute nouvelle stratégie doit implémenter `on_data(df) -> SignalEvent`.
-- `strategy/dual_ma.py` — stratégie de référence (Dual MA Crossover). Toujours utiliser `.shift(1)` sur les indicateurs pour éviter le look-ahead bias.
-- `risk/manager.py` — s'intercale entre la stratégie et l'exécution. Peut downgrader n'importe quel signal en `HOLD`.
-- `execution/engine.py` — `PaperBroker` pour le paper trading, à remplacer par un vrai broker ccxt en live.
-
-**`backtest/engine.py`** — moteur de backtest indépendant. Prend n'importe quelle implémentation de `Strategy`, retourne un `BacktestResult` avec `.cagr`, `.max_drawdown`, `.sharpe`.
+- `config.py` — dataclasses (`Config`, `ExchangeConfig`, `MonitorConfig`, `SwapConfig`), lues depuis `.env`.
+- `swaps/evaluator.py` — logique pure : `open_positions` (lots FIFO par wallet/token), `evaluate` (gain en unités après frais), `current_rate`.
+- `data/feed.py` — `CcxtFeed` résout n'importe quelle paire (directe, inverse, via USDT).
+- `storage/` — `SwapStore` (copie PostgreSQL des swaps), `PgStore` (init du schéma).
+- `monitoring/` — `Alerter` (Telegram), endpoint `/status`, logs structlog.
 
 ## Règles importantes
 
-**Look-ahead bias** : dans `on_data()`, tous les indicateurs calculés sur `df["close"]` doivent être décalés d'une période via `.shift(1)` avant lecture du dernier indice. Sans ça, le backtest triche en utilisant le close courant pour décider du trade courant.
-
-**Même code backtest / live** : `Strategy.on_data()` reçoit un `DataFrame` dans les deux cas — le moteur de backtest passe des fenêtres glissantes, le bot live passe le OHLCV récupéré en temps réel. Ne jamais mettre de logique dépendante du contexte (live vs backtest) dans une stratégie.
-
-**Sandbox par défaut** : `ExchangeConfig.sandbox = True`. Ne passer en live qu'explicitement.
+- Le gain est mesuré en **unités du token d'origine**, pas en valeur fiat.
+- La base CryptoUpdate est ouverte en lecture seule : ne jamais y écrire.
+- Garder `evaluator.py` pur (sans réseau ni base) pour rester testable.

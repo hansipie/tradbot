@@ -1,191 +1,60 @@
 # tradbot
 
-Bot de trading modulaire en Python, orienté crypto via [ccxt](https://github.com/ccxt/ccxt). Architecture event-driven avec séparation stricte entre le code live et le moteur de backtest.
+Bot de surveillance de swaps crypto. Il lit les swaps suivis dans CryptoUpdate et envoie une alerte Telegram quand le swap retour rendrait assez d'unités en plus (seuil configurable, frais déduits).
 
-> N.B.: Ce code est une mise en pratique de mon article: https://blog.ansicode.fr/posts/2026-05-13-la-theorie-derriere-les-bots-de-trading/
+## Fonctionnement
 
-## Prérequis
-
-- [Podman](https://podman.io/) + `podman compose`
-
-Pour le développement local uniquement :
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
-
-## Démarrage rapide (container)
-
-```bash
-cp .env.example .env   # renseigner les clés API et tokens
-podman compose up -d --build
+```
+CryptoUpdate ──POST /swaps (HTTPS + Bearer)──▶ bot ──▶ PostgreSQL ──▶ Telegram
+               (secours manuel : scripts/sync_swaps.py)
 ```
 
-Le bot démarre automatiquement après que Redis et PostgreSQL soient prêts.
+- Un swap A→B est **ouvert** tant que le B reçu n'a pas été dépensé (consommation FIFO par wallet, dépenses partielles gérées).
+- Gain = `B restant × taux B→A × (1 − frais) ÷ A donné − 1`, avec le taux ccxt (paire directe, inverse ou via USDT).
+- Une alerte par swap au franchissement du seuil, réarmée quand le gain repasse 0,5 point sous le seuil.
+- `GET /status` (port 8080) liste les swaps ouverts et leur gain.
+
+## Configuration
 
 ```bash
-# Logs en temps réel
-podman compose logs -f bot
-
-# Arrêt propre
-podman compose down
+cp .env.example .env
 ```
 
-## Configuration (.env)
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `CRYPTOUPDATE_DB` | `../CryptoUpdate/data/db.sqlite3` | base source des swaps |
+| `SWAP_MIN_GAIN_PCT` | 2 | seuil d'alerte (%) |
+| `SWAP_FEE_PCT` | 0.5 | frais estimés du swap retour (%) |
+| `SWAP_CHECK_INTERVAL_MIN` | 15 | intervalle de vérification |
+| `SWAPS_API_TOKEN` | vide | secret Bearer de `POST /swaps` (vide = endpoint désactivé) |
+| `POSTGRES_URL` | localhost | base PostgreSQL |
+| `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` | vides | alertes (désactivées si vides) |
+| `MONITOR_PORT` | 8080 | endpoint `/status` |
 
-```bash
-EXCHANGE_API_KEY=       # clé API de l'exchange
-EXCHANGE_API_SECRET=    # secret API de l'exchange
-SYMBOLS=BTC/USDC,ETH/USDC,SOL/USDC,BNB/USDC   # paires surveillées
+## Recevoir les swaps de CryptoUpdate
 
-REDIS_URL=redis://localhost:6379
-POSTGRES_URL=postgresql://tradbot:tradbot@localhost:5432/tradbot
+1. Génère un secret : `openssl rand -hex 32`, puis renseigne-le comme `SWAPS_API_TOKEN` dans Coolify.
+2. Dans Coolify, attribue un domaine au service `bot` (port 8080) : Traefik fournit le HTTPS.
+3. Dans le `settings.json` de CryptoUpdate (ou via `TRADBOT_URL` / `TRADBOT_TOKEN`) :
 
-TELEGRAM_TOKEN=         # token du bot Telegram (via @BotFather)
-TELEGRAM_CHAT_ID=       # ton chat ID Telegram
-MONITOR_PORT=8080       # port du endpoint HTTP /status
+```json
+"Tradbot": { "url": "https://tradbot.exemple.fr", "token": "<le même secret>" }
 ```
 
-`REDIS_URL` et `POSTGRES_URL` sont automatiquement surchargées par le compose pour pointer vers les services internes. Si `TELEGRAM_TOKEN` est vide, les alertes sont désactivées silencieusement.
+CryptoUpdate envoie alors la liste complète des swaps (8 champs, sans notes ni avoirs) après chaque ajout, modification ou suppression. L'envoi est en arrière-plan : une panne du bot n'empêche jamais d'enregistrer un swap.
 
 ## Utilisation
 
-### Télécharger les données historiques
-
 ```bash
-# Via container
-podman compose run --rm bot uv run python scripts/download_data.py
-
-# En local
-uv run python scripts/download_data.py
-```
-
-Récupère l'historique journalier de chaque paire configurée dans `SYMBOLS` depuis 2018 et le sauvegarde dans `data/historical/`.
-
-### Lancer un backtest
-
-```bash
-uv run python scripts/run_backtest.py           # métriques globales + détail des trades
-uv run python scripts/run_backtest.py --yearly  # tableau année par année
-uv run python scripts/run_backtest.py --all     # les deux
-```
-
-Le backtest génère automatiquement les graphiques dans `data/historical/`.
-
-### Lancer le bot (paper trading)
-
-```bash
-# Via compose (recommandé)
-podman compose up -d --build
-
-# En local
+podman compose up -d postgres
+uv run python scripts/sync_swaps.py   # à relancer après chaque nouveau swap (ou via cron)
 uv run python main.py
 ```
 
-Le bot tourne en mode sandbox par défaut (`ExchangeConfig.sandbox = True`). Aucun ordre réel n'est envoyé tant que `PaperBroker` est utilisé dans `main.py`.
+Ou tout en container : `podman compose up -d --build`.
 
-La boucle se synchronise automatiquement sur les bougies de l'exchange (ex : toutes les 24h pour `1d`). Ctrl+C ou SIGTERM déclenchent un arrêt propre dans la seconde.
-
-**Arrêt via fichier sentinel** (pratique pour un arrêt à distance sans tuer le process) :
-
-```bash
-touch /tmp/tradbot.stop
-```
-
-### Monitoring
-
-**Alertes Telegram** — le bot envoie une notification à chaque trade exécuté, drawdown max atteint, ou erreur réseau répétée.
-
-**Endpoint HTTP** — état du portfolio en temps réel :
-
-```bash
-curl http://localhost:8080/status
-```
-
-```json
-{
-  "symbol": "BTC/USDC",
-  "capital": 9850.0,
-  "position": 0.003,
-  "portfolio_value": 10045.0,
-  "peak_capital": 10200.0,
-  "drawdown": -0.034,
-  "last_signal": "HOLD",
-  "last_price": 81500.0,
-  "last_tick": "2026-05-15T08:00:00Z"
-}
-```
-
-### Tests
+## Tests
 
 ```bash
 uv run pytest tests/ -v
-uv run pytest tests/test_strategy.py::test_buy_signal_when_fast_above_slow -v
 ```
-
-## Architecture
-
-```
-CcxtFeed → Strategy.on_data() → RiskManager.check_market()
-                                          ↓
-                              RiskManager.validate() → ExecutionEngine.execute()
-                                                                ↓
-                                                    PortfolioStore (Redis)
-                                                    PgStore (PostgreSQL)
-                                                    Alerter (Telegram)
-                                                    Status (HTTP /status)
-```
-
-| Répertoire | Rôle |
-|---|---|
-| `tradbot/data/` | Récupération OHLCV via ccxt (`CcxtFeed`) |
-| `tradbot/strategy/` | Signaux de trading (`Signal`, `SignalEvent`, `Strategy`) |
-| `tradbot/risk/` | Validation des ordres — drawdown, exposition, volume, limite trades/h |
-| `tradbot/execution/` | Envoi des ordres (`PaperBroker` ou broker réel) |
-| `tradbot/storage/` | Persistance Redis (portfolio) et PostgreSQL (trades, equity) |
-| `tradbot/monitoring/` | Logs JSON structurés, alertes Telegram, endpoint HTTP status |
-| `backtest/` | Moteur de backtest indépendant — même code de stratégie qu'en live |
-| `scripts/` | Outils CLI : téléchargement de données, backtest, visualisation |
-
-## Stratégies disponibles
-
-| Classe | Description |
-|---|---|
-| `DualMACrossover(fast, slow)` | Achat quand MM(fast) > MM(slow), vente sinon. Défaut : 50/200. |
-| `RSIMeanReversion(period, oversold, overbought)` | Mean reversion sur RSI avec filtre de tendance. |
-
-### Résultats backtest — DualMA 50/200 (2018–2026, frais 0,1 %, slippage 0,1 %)
-
-| Paire | Capital final | CAGR | Drawdown max | Sharpe | Calmar |
-|---|---|---|---|---|---|
-| BNB/USDC | 106 531 $ | +37,6 % | -73,9 % | 0,68 | 0,51 |
-| BTC/USDC | 25 705 $ | +13,6 % | -62,2 % | 0,44 | 0,22 |
-| ETH/USDC | 24 570 $ | +12,9 % | -78,4 % | 0,44 | 0,16 |
-| SOL/USDC | 7 956 $ | -4,8 % | -63,7 % | 0,13 | -0,08 |
-
-*SOL/USDC : historique depuis septembre 2021 uniquement.*
-
-## Risk Manager
-
-Quatre checks appliqués à chaque signal avant exécution :
-
-| Check | Paramètre | Défaut |
-|---|---|---|
-| Drawdown max | `max_drawdown_pct` | 10 % |
-| Trades par heure | `max_trades_per_hour` | 10 |
-| Exposition totale | `max_exposure_pct` | 95 % |
-| Volume anormal | `min_volume_factor` | 10 % de la moyenne 20 bougies |
-
-## Ajouter une stratégie
-
-Implémenter le Protocol `Strategy` dans `tradbot/strategy/` :
-
-```python
-class MaStrategie:
-    def on_data(self, df: pd.DataFrame) -> SignalEvent:
-        # df : OHLCV indexé par pd.Timestamp UTC
-        # Toujours utiliser .shift(1) sur les indicateurs pour éviter le look-ahead bias
-        ...
-        return SignalEvent(Signal.BUY, symbol="BTC/USDC", price=df["close"].iloc[-1])
-```
-
-La même instance tourne sans modification dans `run_backtest()` et dans `main.py`.

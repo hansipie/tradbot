@@ -24,8 +24,8 @@ class Alerter:
         except Exception as exc:
             log.warning("telegram_alert_failed", error=str(exc))
 
-    def bot_started(self, symbol: str, capital: float) -> None:
-        self._send(f"🤖 <b>Bot démarré</b>\nSymbole : {symbol}\nCapital : {capital:.2f} $")
+    def bot_started(self, description: str) -> None:
+        self._send(f"🤖 <b>Bot démarré</b>\n{description}")
 
     def bot_stopped(self) -> None:
         self._send("🛑 <b>Bot arrêté</b>")
@@ -47,6 +47,17 @@ class Alerter:
 
     def consecutive_errors(self, count: int, last_error: str) -> None:
         self._send(f"🚨 <b>{count} erreurs consécutives</b>\n{last_error}")
+
+    def swap_feasible(
+        self, token_from: str, token_to: str, remaining_to: float, units_back: float,
+        cost_from: float, gain: float, swapped_on: str,
+    ) -> None:
+        self._send(
+            f"🔁 <b>Swap faisable : {token_to} → {token_from}</b>\n"
+            f"Gain : {gain:+.2%} en {token_from}\n"
+            f"Tu rends {remaining_to:.8g} {token_to}\n"
+            f"Tu récupères ~{units_back:.8g} {token_from} (départ : {cost_from:.8g}, swap du {swapped_on})"
+        )
 
     def crossover_imminent(self, symbol: str, direction: str, bars: float, timeframe: str) -> None:
         emoji = "📈" if direction == "BUY" else "📉"

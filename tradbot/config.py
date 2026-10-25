@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from pathlib import Path
 from dotenv import load_dotenv
 import os
 
@@ -15,15 +14,6 @@ class ExchangeConfig:
 
 
 @dataclass
-class RiskConfig:
-    max_position_pct: float = 0.02
-    max_drawdown_pct: float = 0.10
-    max_trades_per_hour: int = 10
-    max_exposure_pct: float = 0.95      # position value / total portfolio max
-    min_volume_factor: float = 0.1      # volume min = factor × moyenne 20 bougies
-
-
-@dataclass
 class MonitorConfig:
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
@@ -32,20 +22,24 @@ class MonitorConfig:
 
 
 @dataclass
+class SwapConfig:
+    min_gain: float = field(default_factory=lambda: float(os.getenv("SWAP_MIN_GAIN_PCT", "2")) / 100)
+    fee: float = field(default_factory=lambda: float(os.getenv("SWAP_FEE_PCT", "0.5")) / 100)
+    check_interval_s: int = field(default_factory=lambda: int(os.getenv("SWAP_CHECK_INTERVAL_MIN", "15")) * 60)
+    # Écart sous le seuil à franchir avant de pouvoir ré-alerter le même swap
+    rearm_margin: float = 0.005
+    # Token Bearer attendu par POST /swaps ; vide = endpoint désactivé
+    api_token: str = field(default_factory=lambda: os.getenv("SWAPS_API_TOKEN", ""))
+    cryptoupdate_db: str = field(
+        default_factory=lambda: os.getenv("CRYPTOUPDATE_DB", "../CryptoUpdate/data/db.sqlite3")
+    )
+
+
+@dataclass
 class Config:
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
-    risk: RiskConfig = field(default_factory=RiskConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
-    symbols: list[str] = field(
-        default_factory=lambda: [s.strip() for s in os.getenv("SYMBOLS", "BTC/USDC").split(",")]
-    )
-    timeframe: str = "1d"
-    history_since: str = "2018-01-01"
-    redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379"))
+    swaps: SwapConfig = field(default_factory=SwapConfig)
     postgres_url: str = field(default_factory=lambda: os.getenv(
         "POSTGRES_URL", "postgresql://tradbot:tradbot@localhost:5432/tradbot"
     ))
-
-    def data_file(self, symbol: str) -> Path:
-        slug = symbol.replace("/", "_")
-        return Path("data/historical") / f"{slug}_{self.timeframe}.parquet"
