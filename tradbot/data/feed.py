@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 import pandas as pd
 import ccxt
 
@@ -72,27 +72,50 @@ class CcxtFeed:
         return _raw_to_df(raw)
 
     def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 500) -> pd.DataFrame:
-        # 1. Paire directe
+        return _resolve(symbol, lambda s: self._fetch_raw(s, timeframe, limit))
+
+    def _paginate(self, symbol: str, timeframe: str, since_ms: int, until_ms: int) -> pd.DataFrame:
+        """Bougies de `symbol` entre since_ms et until_ms, par pages de 1000."""
+        candles: list = []
+        while since_ms < until_ms:
+            batch = self._exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=1000)
+            if not batch:
+                break
+            candles.extend(c for c in batch if c[0] < until_ms)
+            next_since = batch[-1][0] + 1
+            if next_since <= since_ms:
+                break
+            since_ms = next_since
+        return _raw_to_df(candles)
+
+    def fetch_history(
+        self, symbol: str, timeframe: str, since_ms: int, until_ms: int
+    ) -> pd.DataFrame:
+        """Historique complet [since_ms, until_ms[ avec la même résolution que fetch_ohlcv."""
+        return _resolve(symbol, lambda s: self._paginate(s, timeframe, since_ms, until_ms))
+
+
+def _resolve(symbol: str, fetch: Callable[[str], pd.DataFrame]) -> pd.DataFrame:
+    """Résout une paire : directe, inverse, puis reconstruction via USDT."""
+    # 1. Paire directe
+    try:
+        return fetch(symbol)
+    except ccxt.BadSymbol:
+        pass
+
+    # 2. Paire inverse (B/A → inversion des prix)
+    inv = _inverse_symbol(symbol)
+    if inv is not None:
         try:
-            return self._fetch_raw(symbol, timeframe, limit)
+            return _invert_ohlcv(fetch(inv))
         except ccxt.BadSymbol:
             pass
 
-        # 2. Paire inverse (B/A → inversion des prix)
-        inv = _inverse_symbol(symbol)
-        if inv is not None:
-            try:
-                return _invert_ohlcv(self._fetch_raw(inv, timeframe, limit))
-            except ccxt.BadSymbol:
-                pass
+    # 3. Reconstruction synthétique via USDT : A/USDT ÷ B/USDT
+    parts = symbol.split("/")
+    if len(parts) == 2:
+        base, quote = parts
+        if base != "USDT" and quote != "USDT":
+            return _cross_via_usdt(fetch(f"{base}/USDT"), fetch(f"{quote}/USDT"))
 
-        # 3. Reconstruction synthétique via USDT : A/USDT ÷ B/USDT
-        parts = symbol.split("/")
-        if len(parts) == 2:
-            base, quote = parts
-            if base != "USDT" and quote != "USDT":
-                df_base = self._fetch_raw(f"{base}/USDT", timeframe, limit)
-                df_quote = self._fetch_raw(f"{quote}/USDT", timeframe, limit)
-                return _cross_via_usdt(df_base, df_quote)
-
-        raise ccxt.BadSymbol(f"impossible de résoudre la paire {symbol}")
+    raise ccxt.BadSymbol(f"impossible de résoudre la paire {symbol}")
