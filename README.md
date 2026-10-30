@@ -14,7 +14,7 @@ CryptoUpdate ──POST /swaps (HTTPS + Bearer)──▶ bot ──▶ PostgreSQ
 - Une alerte par swap au franchissement du seuil, réarmée quand le gain repasse 0,5 point sous le seuil.
 - `GET /status` (port 8080) liste les swaps ouverts et leur gain ; il exige le même Bearer que `POST /swaps` dès que `SWAPS_API_TOKEN` est défini.
 - Commandes Telegram (chat configuré uniquement) : `/status`, `/swaps`, `/clear_swaps`, `/help`. `/clear_swaps` vide la copie PostgreSQL des swaps et demande une confirmation (`/clear_swaps confirm`) ; les swaps reviennent à la prochaine synchronisation de CryptoUpdate.
-- Chaque synchronisation reçue déclenche un message Telegram : détail des swaps reçus et des swaps supprimés de la copie (10 listés au maximum, puis « … et N autre(s) »).
+- Une synchronisation qui apporte des changements déclenche un message Telegram : détail des **nouveaux** swaps et des swaps supprimés de la copie (10 listés au maximum, puis « … et N autre(s) »). Aucun message si rien de nouveau ni de supprimé.
 - Arrêt propre : `SIGTERM`/`SIGINT`, ou création du fichier `/tmp/tradbot.stop`.
 
 ## Configuration

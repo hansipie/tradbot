@@ -94,8 +94,8 @@ def main() -> None:
     store = SwapStore(cfg.postgres_url)
 
     def on_swaps(swaps) -> None:
-        deleted = store.upsert_many(swaps)
-        alerter.swaps_synced(swaps, deleted)
+        new, deleted = store.upsert_many(swaps)
+        alerter.swaps_synced(new, deleted)
 
     start_status_server(cfg.monitor.status_port, cfg.swaps.api_token, on_swaps)
     feed = CcxtFeed(cfg.exchange.id, cfg.exchange.api_key, cfg.exchange.api_secret, cfg.exchange.sandbox)

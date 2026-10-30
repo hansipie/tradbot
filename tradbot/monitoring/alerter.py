@@ -75,13 +75,17 @@ class Alerter:
             lines.append(f"\n… et {len(swaps) - max_listed} autre(s)")
         return lines
 
-    def swaps_synced(self, swaps: list, deleted: list | None = None, max_listed: int = 10) -> None:
-        lines = [f"🔄 <b>Synchronisation des swaps</b>\n{len(swaps)} swap(s) reçu(s)"]
-        lines += self._swap_lines(swaps, max_listed)
+    def swaps_synced(self, new: list, deleted: list | None = None, max_listed: int = 10) -> None:
+        """Message de synchronisation ; rien n'est envoyé s'il n'y a ni nouveau ni supprimé."""
+        lines = []
+        if new:
+            lines.append(f"🔄 <b>{len(new)} nouveau(x) swap(s)</b>")
+            lines += self._swap_lines(new, max_listed)
         if deleted:
-            lines.append(f"\n🗑 <b>{len(deleted)} swap(s) supprimé(s)</b>")
+            lines.append(f"{chr(10) if lines else ''}🗑 <b>{len(deleted)} swap(s) supprimé(s)</b>")
             lines += self._swap_lines(deleted, max_listed)
-        self._send("\n".join(lines))
+        if lines:
+            self._send("\n".join(lines))
 
     def crossover_imminent(self, symbol: str, direction: str, bars: float, timeframe: str) -> None:
         emoji = "📈" if direction == "BUY" else "📉"

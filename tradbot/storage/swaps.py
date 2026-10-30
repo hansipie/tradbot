@@ -9,9 +9,10 @@ class SwapStore:
     def __init__(self, postgres_url: str):
         self._url = postgres_url
 
-    def upsert_many(self, swaps: list[Swap]) -> list[Swap]:
-        """Insère/met à jour les swaps et retourne ceux supprimés de la copie."""
+    def upsert_many(self, swaps: list[Swap]) -> tuple[list[Swap], list[Swap]]:
+        """Insère/met à jour les swaps ; retourne (nouveaux, supprimés de la copie)."""
         with psycopg.connect(self._url) as conn:
+            known = {r[0] for r in conn.execute("SELECT id FROM swaps").fetchall()}
             conn.cursor().executemany(
                 """
                 INSERT INTO swaps (id, ts, token_from, amount_from, wallet_from,
@@ -42,10 +43,12 @@ class SwapStore:
                 ([s.id for s in swaps],),
             ).fetchall()
             conn.commit()
-        return [
+        new = sorted((s for s in swaps if s.id not in known), key=lambda s: (s.timestamp, s.id))
+        deleted = [
             Swap(r[0], int(r[1]), r[2], float(r[3]), r[4], r[5], float(r[6]), r[7])
             for r in sorted(rows, key=lambda r: (r[1], r[0]))
         ]
+        return new, deleted
 
     def delete_all(self) -> int:
         """Vide la copie locale des swaps et retourne le nombre de lignes supprimées."""
