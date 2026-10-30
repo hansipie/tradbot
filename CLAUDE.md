@@ -26,7 +26,7 @@ CryptoUpdate SQLite → sync_swaps.py → PostgreSQL (swaps) → open_positions(
 - `data/feed.py` — `CcxtFeed` résout n'importe quelle paire (directe, inverse, via USDT) ; `fetch_history` pagine un historique complet.
 - `data/history.py` — `HistoryCache` : cache CSV des OHLCV dans `data/ohlcv/<exchange>/` (gitignoré), seules les bougies terminées sont gardées.
 - `storage/` — `SwapStore` (copie PostgreSQL des swaps), `schema.py` : `PgStore` (init du schéma).
-- `monitoring/` — `Alerter` (Telegram), `commands.py` (commandes Telegram /status /swaps /help), endpoint `/status`, logs structlog.
+- `monitoring/` — `Alerter` (Telegram), `commands.py` (commandes Telegram /status /swaps /clear_swaps /help), endpoint `/status`, logs structlog.
 
 ## Règles importantes
 
