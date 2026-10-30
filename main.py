@@ -92,7 +92,12 @@ def main() -> None:
 
     PgStore(cfg.postgres_url).init_schema()
     store = SwapStore(cfg.postgres_url)
-    start_status_server(cfg.monitor.status_port, cfg.swaps.api_token, store.upsert_many)
+
+    def on_swaps(swaps) -> None:
+        store.upsert_many(swaps)
+        alerter.swaps_synced(swaps)
+
+    start_status_server(cfg.monitor.status_port, cfg.swaps.api_token, on_swaps)
     feed = CcxtFeed(cfg.exchange.id, cfg.exchange.api_key, cfg.exchange.api_secret, cfg.exchange.sandbox)
 
     alerted: set[int] = set()

@@ -1,5 +1,7 @@
+import html
 import json
 import urllib.request
+from datetime import datetime, timezone
 
 import structlog
 
@@ -58,6 +60,19 @@ class Alerter:
             f"Tu rends {remaining_to:.8g} {token_to}\n"
             f"Tu récupères ~{units_back:.8g} {token_from} (départ : {cost_from:.8g}, swap du {swapped_on})"
         )
+
+    def swaps_synced(self, swaps: list, max_listed: int = 10) -> None:
+        lines = [f"🔄 <b>Synchronisation des swaps</b>\n{len(swaps)} swap(s) reçu(s)"]
+        for s in swaps[:max_listed]:
+            date = datetime.fromtimestamp(s.timestamp, timezone.utc).strftime("%d/%m/%Y %H:%M")
+            lines.append(
+                f"\n#{s.id} · {date}\n"
+                f"{s.amount_from:.8g} {html.escape(s.token_from)} ({html.escape(s.wallet_from)}) → "
+                f"{s.amount_to:.8g} {html.escape(s.token_to)} ({html.escape(s.wallet_to)})"
+            )
+        if len(swaps) > max_listed:
+            lines.append(f"\n… et {len(swaps) - max_listed} autre(s)")
+        self._send("\n".join(lines))
 
     def crossover_imminent(self, symbol: str, direction: str, bars: float, timeframe: str) -> None:
         emoji = "📈" if direction == "BUY" else "📉"
