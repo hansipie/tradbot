@@ -12,13 +12,17 @@ _HELP = (
     "<b>Commandes</b>\n"
     "/status — état du bot\n"
     "/swaps — swaps ouverts et gain\n"
+    "/clear_swaps — supprime tous les swaps (demande confirmation)\n"
     "/help — cette aide"
 )
 
 
-def render_command(text: str, state: dict) -> str | None:
+def render_command(
+    text: str, state: dict, clear_swaps: Callable[[], int] | None = None,
+) -> str | None:
     """Réponse à une commande Telegram, ou None si ce n'est pas une commande connue."""
-    command = text.strip().split(maxsplit=1)[0].split("@")[0].lower() if text.strip() else ""
+    parts = text.strip().split()
+    command = parts[0].split("@")[0].lower() if parts else ""
 
     if command in ("/start", "/help"):
         return _HELP
@@ -44,6 +48,15 @@ def render_command(text: str, state: dict) -> str | None:
         ]
         return "🔁 <b>Swaps ouverts</b>\n" + "\n".join(lines)
 
+    if command == "/clear_swaps" and clear_swaps is not None:
+        if [p.lower() for p in parts[1:]] != ["confirm"]:
+            return (
+                "⚠️ <b>Supprimer tous les swaps ?</b>\n"
+                "Ils seront de nouveau copiés à la prochaine synchronisation.\n"
+                "Confirme avec : /clear_swaps confirm"
+            )
+        return f"🗑 {clear_swaps()} swap(s) supprimé(s)."
+
     return None
 
 
@@ -57,7 +70,10 @@ def _api(token: str, method: str, payload: dict, timeout: float) -> dict:
         return json.load(resp)
 
 
-def _poll(token: str, chat_id: str, get_state: Callable[[], dict]) -> None:
+def _poll(
+    token: str, chat_id: str, get_state: Callable[[], dict],
+    clear_swaps: Callable[[], int] | None,
+) -> None:
     offset = 0
     while True:
         try:
@@ -72,7 +88,7 @@ def _poll(token: str, chat_id: str, get_state: Callable[[], dict]) -> None:
                 # Seul le chat configuré peut interroger le bot
                 if str(msg.get("chat", {}).get("id")) != chat_id:
                     continue
-                reply = render_command(msg.get("text", ""), get_state())
+                reply = render_command(msg.get("text", ""), get_state(), clear_swaps)
                 if reply:
                     _api(token, "sendMessage",
                          {"chat_id": chat_id, "text": reply, "parse_mode": "HTML"}, 10)
@@ -81,8 +97,11 @@ def _poll(token: str, chat_id: str, get_state: Callable[[], dict]) -> None:
             threading.Event().wait(10)
 
 
-def start_command_listener(token: str, chat_id: str, get_state: Callable[[], dict]) -> None:
+def start_command_listener(
+    token: str, chat_id: str, get_state: Callable[[], dict],
+    clear_swaps: Callable[[], int] | None = None,
+) -> None:
     if not (token and chat_id):
         return
-    threading.Thread(target=_poll, args=(token, chat_id, get_state), daemon=True).start()
+    threading.Thread(target=_poll, args=(token, chat_id, get_state, clear_swaps), daemon=True).start()
     log.info("command_listener_started")

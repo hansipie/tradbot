@@ -94,8 +94,8 @@ def main() -> None:
     store = SwapStore(cfg.postgres_url)
 
     def on_swaps(swaps) -> None:
-        store.upsert_many(swaps)
-        alerter.swaps_synced(swaps)
+        deleted = store.upsert_many(swaps)
+        alerter.swaps_synced(swaps, deleted)
 
     start_status_server(cfg.monitor.status_port, cfg.swaps.api_token, on_swaps)
     feed = CcxtFeed(cfg.exchange.id, cfg.exchange.api_key, cfg.exchange.api_secret, cfg.exchange.sandbox)
@@ -111,7 +111,9 @@ def main() -> None:
     )
     if cfg.monitor.notify_lifecycle:
         alerter.bot_started(f"surveillance des swaps (seuil {cfg.swaps.min_gain:.1%})")
-    start_command_listener(cfg.monitor.telegram_token, cfg.monitor.telegram_chat_id, get_state)
+    start_command_listener(
+        cfg.monitor.telegram_token, cfg.monitor.telegram_chat_id, get_state, store.delete_all,
+    )
 
     while _running and not _SENTINEL.exists():
         wait_s = cfg.swaps.check_interval_s

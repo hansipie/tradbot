@@ -45,3 +45,18 @@ def test_unknown_or_plain_text_ignored():
     assert render_command("/nope", STATE) is None
     assert render_command("bonjour", STATE) is None
     assert render_command("", STATE) is None
+
+
+def test_clear_swaps_asks_for_confirmation():
+    called = []
+    reply = render_command("/clear_swaps", {}, lambda: called.append(1) or 0)
+    assert "confirm" in reply
+    assert not called
+
+
+def test_clear_swaps_confirmed():
+    assert "3 swap(s)" in render_command("/clear_swaps confirm", {}, lambda: 3)
+
+
+def test_clear_swaps_unavailable_without_callback():
+    assert render_command("/clear_swaps confirm", {}) is None

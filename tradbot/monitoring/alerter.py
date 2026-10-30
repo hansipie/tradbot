@@ -61,8 +61,9 @@ class Alerter:
             f"Tu récupères ~{units_back:.8g} {token_from} (départ : {cost_from:.8g}, swap du {swapped_on})"
         )
 
-    def swaps_synced(self, swaps: list, max_listed: int = 10) -> None:
-        lines = [f"🔄 <b>Synchronisation des swaps</b>\n{len(swaps)} swap(s) reçu(s)"]
+    @staticmethod
+    def _swap_lines(swaps: list, max_listed: int) -> list[str]:
+        lines = []
         for s in swaps[:max_listed]:
             date = datetime.fromtimestamp(s.timestamp, timezone.utc).strftime("%d/%m/%Y %H:%M")
             lines.append(
@@ -72,6 +73,14 @@ class Alerter:
             )
         if len(swaps) > max_listed:
             lines.append(f"\n… et {len(swaps) - max_listed} autre(s)")
+        return lines
+
+    def swaps_synced(self, swaps: list, deleted: list | None = None, max_listed: int = 10) -> None:
+        lines = [f"🔄 <b>Synchronisation des swaps</b>\n{len(swaps)} swap(s) reçu(s)"]
+        lines += self._swap_lines(swaps, max_listed)
+        if deleted:
+            lines.append(f"\n🗑 <b>{len(deleted)} swap(s) supprimé(s)</b>")
+            lines += self._swap_lines(deleted, max_listed)
         self._send("\n".join(lines))
 
     def crossover_imminent(self, symbol: str, direction: str, bars: float, timeframe: str) -> None:

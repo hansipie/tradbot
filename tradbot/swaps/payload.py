@@ -30,6 +30,9 @@ def parse_swaps(data: object) -> list[Swap]:
     if not isinstance(data, dict) or not isinstance(data.get("swaps"), list):
         raise PayloadError('attendu : {"swaps": [...]}')
     rows = data["swaps"]
+    if not rows:
+        # Une synchro complète vide effacerait toute la copie
+        raise PayloadError("liste de swaps vide")
     if len(rows) > MAX_SWAPS:
         raise PayloadError("trop de swaps")
 

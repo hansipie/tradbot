@@ -9,7 +9,8 @@ class SwapStore:
     def __init__(self, postgres_url: str):
         self._url = postgres_url
 
-    def upsert_many(self, swaps: list[Swap]) -> None:
+    def upsert_many(self, swaps: list[Swap]) -> list[Swap]:
+        """Insère/met à jour les swaps et retourne ceux supprimés de la copie."""
         with psycopg.connect(self._url) as conn:
             conn.cursor().executemany(
                 """
@@ -32,8 +33,26 @@ class SwapStore:
                 ],
             )
             # Un swap supprimé dans CryptoUpdate disparaît aussi de la copie
-            conn.execute("DELETE FROM swaps WHERE id <> ALL(%s::int[])", ([s.id for s in swaps],))
+            rows = conn.execute(
+                """
+                DELETE FROM swaps WHERE id <> ALL(%s::int[])
+                RETURNING id, ts, token_from, amount_from, wallet_from,
+                          token_to, amount_to, wallet_to
+                """,
+                ([s.id for s in swaps],),
+            ).fetchall()
             conn.commit()
+        return [
+            Swap(r[0], int(r[1]), r[2], float(r[3]), r[4], r[5], float(r[6]), r[7])
+            for r in sorted(rows, key=lambda r: (r[1], r[0]))
+        ]
+
+    def delete_all(self) -> int:
+        """Vide la copie locale des swaps et retourne le nombre de lignes supprimées."""
+        with psycopg.connect(self._url) as conn:
+            count = conn.execute("DELETE FROM swaps").rowcount
+            conn.commit()
+        return count
 
     def load_all(self) -> list[Swap]:
         with psycopg.connect(self._url) as conn:

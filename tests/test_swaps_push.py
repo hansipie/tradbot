@@ -23,16 +23,13 @@ def test_parse_swaps_normalizes_tokens():
     assert swaps[0].amount_to == pytest.approx(147.8)
 
 
-def test_parse_swaps_accepts_empty_list():
-    assert parse_swaps({"swaps": []}) == []
-
-
 def test_parse_swaps_dedupes_by_id():
     assert len(parse_swaps({"swaps": [ROW, dict(ROW, amount_from=2.0)]})) == 1
 
 
 @pytest.mark.parametrize("bad", [
     [],
+    {"swaps": []},  # une synchro vide effacerait toute la copie
     {"swaps": "x"},
     {"swaps": [{"id": 1}]},
     {"swaps": [dict(ROW, amount_from=0)]},
