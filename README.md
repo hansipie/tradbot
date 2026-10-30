@@ -32,7 +32,7 @@ cp .env.example .env
 | `SWAPS_API_TOKEN` | vide | secret Bearer de `POST /swaps` (vide = endpoint désactivé) |
 | `POSTGRES_URL` | localhost | base PostgreSQL |
 | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` | vides | alertes (désactivées si vides) |
-| `NOTIFY_LIFECYCLE` | false | message Telegram à chaque démarrage/arrêt |
+| `NOTIFY_LIFECYCLE` | true | message Telegram à chaque démarrage/arrêt (`false` pour le couper) |
 | `MONITOR_PORT` | 8080 | port de l'endpoint (hors container ; le compose force 8080 en interne) |
 
 ## Recevoir les swaps de CryptoUpdate

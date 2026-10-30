@@ -19,9 +19,9 @@ class MonitorConfig:
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
     status_port: int = field(default_factory=lambda: int(os.getenv("MONITOR_PORT", "8080")))
     error_alert_threshold: int = 3  # alerter après N erreurs consécutives
-    # Messages "démarré"/"arrêté" à chaque redémarrage (bruyant avec Coolify)
+    # Messages "démarré"/"arrêté" à chaque redémarrage (NOTIFY_LIFECYCLE=false pour les couper)
     notify_lifecycle: bool = field(
-        default_factory=lambda: os.getenv("NOTIFY_LIFECYCLE", "").lower() in ("1", "true", "yes")
+        default_factory=lambda: os.getenv("NOTIFY_LIFECYCLE", "true").lower() in ("1", "true", "yes")
     )
 
 
