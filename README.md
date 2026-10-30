@@ -13,7 +13,8 @@ CryptoUpdate ──POST /swaps (HTTPS + Bearer)──▶ bot ──▶ PostgreSQ
 - Gain = `B restant × taux B→A × (1 − frais) ÷ A donné − 1`, avec le taux ccxt (paire directe, inverse ou via USDT).
 - Une alerte par swap au franchissement du seuil, réarmée quand le gain repasse 0,5 point sous le seuil.
 - `GET /status` (port 8080) liste les swaps ouverts et leur gain ; il exige le même Bearer que `POST /swaps` dès que `SWAPS_API_TOKEN` est défini.
-- Commandes Telegram (chat configuré uniquement) : `/status`, `/swaps`, `/help`.
+- Commandes Telegram (chat configuré uniquement) : `/status`, `/swaps`, `/clear_swaps`, `/help`. `/clear_swaps` vide la copie PostgreSQL des swaps et demande une confirmation (`/clear_swaps confirm`) ; les swaps reviennent à la prochaine synchronisation de CryptoUpdate.
+- Chaque synchronisation reçue déclenche un message Telegram : détail des swaps reçus et des swaps supprimés de la copie (10 listés au maximum, puis « … et N autre(s) »).
 - Arrêt propre : `SIGTERM`/`SIGINT`, ou création du fichier `/tmp/tradbot.stop`.
 
 ## Configuration
@@ -44,7 +45,7 @@ cp .env.example .env
 "Tradbot": { "url": "https://tradbot.exemple.fr", "token": "<le même secret>" }
 ```
 
-CryptoUpdate envoie alors la liste complète des swaps (8 champs, sans notes ni avoirs) après chaque ajout, modification ou suppression. L'envoi est en arrière-plan : une panne du bot n'empêche jamais d'enregistrer un swap.
+CryptoUpdate envoie alors la liste complète des swaps (8 champs, sans notes ni avoirs) après chaque ajout, modification ou suppression ; un swap absent de la liste est supprimé de la copie du bot. Une liste vide est refusée (422) pour éviter d'effacer toute la table : pour tout supprimer, utilise `/clear_swaps`. L'envoi est en arrière-plan : une panne du bot n'empêche jamais d'enregistrer un swap.
 
 ## Utilisation
 
